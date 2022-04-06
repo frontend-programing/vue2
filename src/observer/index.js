@@ -1,4 +1,5 @@
-import { isObject } from '../utils/index'
+import { def, isObject } from '../utils/index'
+import { arrayMethods } from './array'
 
 /** defineReactive利用Object.defineProperty重新定义data中的属性
  * Object.defineProperty(data, 'a', {
@@ -11,6 +12,7 @@ function defineReactive(data, key, value) {
   /**
    * 直接传value，因为很可能嵌套对象也需要劫持
    * 递归劫持
+   *  其实这里头也隐藏了判断逻辑，即只劫持对象，如果是普通属性直接就拒绝掉不执行函数了
    */
   observe(value)
   Object.defineProperty(data, key, {
@@ -37,9 +39,44 @@ function defineReactive(data, key, value) {
 /** Observer用于观测数据 */
 class Observer {
   constructor(data) {
-    this.walk(data)
+    // data.__ob__ = this
+    /** 在data定一个不可枚举和修改的属性，叫做__ob__ */
+    def(data, '__ob__', this)
+    /**
+     * 能执行到这一步，只有引用类型才能做到
+     * 目前只考虑数组和对象两种情况
+     * 假如，我们要劫持的是数组的话，按目前的情况，我们会把数组的每一个key，也就是下标索引劫持了
+     * 但是vue内部不是这样做的，因为劫持数组的下标很耗费性能
+     * 前端开发中，很少直接操作数组，都是操作arr.push,arr.shift这一类间接操作索引的方法
+     */
+    if (Array.isArray(data)) {
+      /**
+       * Object.setPrototypeOf(data, arrayMethods)
+       * Array实例 -> arrayMethods -> oldArrayMethods -> Object.prototype -> null
+       */
+      Object.setPrototypeOf(data, arrayMethods)
+      this.observeArray(data)
+    } else {
+      this.walk(data)
+    }
   }
 
+  /**
+   * observeArray劫持数组跟walk不同的地方在于，碰到数组本身会直接绕过，即不处理数组的索引
+   * 直接处理数组的每一个值，这样子索引就不会被劫持到。而用walk不止会对数组元素劫持，会对数组自身也劫持（即数组的索引）
+   */
+  observeArray(data) {
+    /** 遍历数组,劫持每一个对象（为啥这么说？是因为observe自带判断，如果非对象类型即object类型直接return了） */
+    for (let i = 0; i < data.length; i++) {
+      /** 如果是基本属性，就跳过
+       * 如果是对象就会劫持对象
+       * data: -> [ { age: 1 } ]
+       * data[i] -> { age: 1 }
+       */
+      observe(data[i])
+    }
+  }
+  /** 遍历对象进行defineReactive */
   walk(data) {
     /** 获取data所有key
      *  new Vue({

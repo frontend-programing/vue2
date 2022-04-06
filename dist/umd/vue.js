@@ -40,6 +40,63 @@ var Vue = (function () {
   function isObject(data) {
     return data !== null && _typeof(data) === 'object';
   }
+  /** 定义一个不可枚举的属性 */
+
+  function def(data, key, value) {
+    Object.defineProperty(data, key, {
+      enumerable: false,
+      configurable: false,
+      value: value
+    });
+  }
+
+  /**
+   * array.js文件要重写数组的几个常用方法
+   * push shift unshift pop reverse sort splice这些会导致数组本身发生变化的方法要重写
+   * 像slice不是改变本身而是产生副本的方法不需要重写
+   */
+
+  var oldArrayMethods = Array.prototype;
+  /**
+   * 给arrayMethods扩展原型，指向oldArrayMethods。其实就是数组原生的prototype
+   * arrayMethods -> oldArrayMethods -> Object.prototype -> null
+   */
+
+  var arrayMethods = Object.create(oldArrayMethods);
+  var methods = ['push', 'shift', 'unshift', 'pop', 'reverse', 'sort', 'splice'];
+  methods.forEach(function (method) {
+    arrayMethods[method] = function () {
+      for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
+        args[_key] = arguments[_key];
+      }
+
+      /** 重写的新方法先调用原生的方法，并且把该传入的参数传入
+       * 然后this就是指调用数组方法的数组实例
+       * 其实这个就是AOP切片编程思想
+       */
+      oldArrayMethods[method].apply(this, args);
+      var inserted;
+      var ob = this.__ob__;
+
+      switch (method) {
+        case 'push':
+        case 'unshift':
+          inserted = args;
+          break;
+
+        /** splice(0, 1, newValue) */
+
+        case 'splice':
+          inserted = args.slice(2);
+          break;
+      }
+
+      if (inserted) {
+        /** 将新增的属性继续去劫持 */
+        ob.observeArray(inserted);
+      }
+    };
+  });
 
   /** defineReactive利用Object.defineProperty重新定义data中的属性
    * Object.defineProperty(data, 'a', {
@@ -53,6 +110,7 @@ var Vue = (function () {
     /**
      * 直接传value，因为很可能嵌套对象也需要劫持
      * 递归劫持
+     *  其实这里头也隐藏了判断逻辑，即只劫持对象，如果是普通属性直接就拒绝掉不执行函数了
      */
     observe(value);
     Object.defineProperty(data, key, {
@@ -83,10 +141,51 @@ var Vue = (function () {
     function Observer(data) {
       _classCallCheck(this, Observer);
 
-      this.walk(data);
+      // data.__ob__ = this
+
+      /** 在data定一个不可枚举和修改的属性，叫做__ob__ */
+      def(data, '__ob__', this);
+      /**
+       * 能执行到这一步，只有引用类型才能做到
+       * 目前只考虑数组和对象两种情况
+       * 假如，我们要劫持的是数组的话，按目前的情况，我们会把数组的每一个key，也就是下标索引劫持了
+       * 但是vue内部不是这样做的，因为劫持数组的下标很耗费性能
+       * 前端开发中，很少直接操作数组，都是操作arr.push,arr.shift这一类间接操作索引的方法
+       */
+
+      if (Array.isArray(data)) {
+        /**
+         * Object.setPrototypeOf(data, arrayMethods)
+         * Array实例 -> arrayMethods -> oldArrayMethods -> Object.prototype -> null
+         */
+        Object.setPrototypeOf(data, arrayMethods);
+        this.observeArray(data);
+      } else {
+        this.walk(data);
+      }
     }
+    /**
+     * observeArray劫持数组跟walk不同的地方在于，碰到数组本身会直接绕过，即不处理数组的索引
+     * 直接处理数组的每一个值，这样子索引就不会被劫持到。而用walk不止会对数组元素劫持，会对数组自身也劫持（即数组的索引）
+     */
+
 
     _createClass(Observer, [{
+      key: "observeArray",
+      value: function observeArray(data) {
+        /** 遍历数组,劫持每一个对象（为啥这么说？是因为observe自带判断，如果非对象类型即object类型直接return了） */
+        for (var i = 0; i < data.length; i++) {
+          /** 如果是基本属性，就跳过
+           * 如果是对象就会劫持对象
+           * data: -> [ { age: 1 } ]
+           * data[i] -> { age: 1 }
+           */
+          observe(data[i]);
+        }
+      }
+      /** 遍历对象进行defineReactive */
+
+    }, {
       key: "walk",
       value: function walk(data) {
         /** 获取data所有key

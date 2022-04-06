@@ -19,13 +19,15 @@
           a: 1,
           b: {
             name: 'jaylen'
-          }
+          },
+          c: [{ age: 10 }]
         }
       }
     })
     vm._data.b = {
       name: 'zhangsan'
     }
+    vm._data.c.push({ age: 20 })
     console.log(vm)
   </script>
 </body>
