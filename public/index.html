@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+
+<body>
+  <div id="app"></div>
+
+  <script src="/dist/umd/vue.js"></script>
+  <script>
+    const vm = new Vue({
+      data() {
+        return {
+          a: 1,
+          b: {
+            name: 'jaylen'
+          }
+        }
+      }
+    })
+    vm._data.b = {
+      name: 'zhangsan'
+    }
+    console.log(vm)
+  </script>
+</body>
+
+</html>
